@@ -1,5 +1,6 @@
 #general idea of MPKC
 
+#general idea of MPKC
 gf = GF(256)
 
 def gen_invertable_matrix(dim):
@@ -90,8 +91,68 @@ def keygen(v,olist):
 	sk=(cmap,t[1],ct,s[1],cs)
 	return (pub,sk)
 
+def poly_eval(poly,vect):
+	A,B,C = poly
+	return vect*A*A + B*vect + C
+
+def polys_eval(pk,vect):
+	rslt = [poly_eval(p,vect) for p in pk]
+
+def cmap2linear(polys,vect,tv):
+	assert len(polys)==len(vect)
+	m = len(polys[0][1])
+	o = len(vect)
+	v = m - o
+		
+	coeff = Matrix(gf,o,o)
+	bv = vector(gf,o)
+	for i,poly in enumerate(polys):
+		A,B,C = poly
+		c0 = A[0:v,0:v]
+		c1 = A[0:v,v:m]
+		coeff[i,:] = tv*c1 + B[v:]
+		bv = vect[i] - tv*c0*tv - tv*B[0:v] - C
+	return (coeff,bv,tv)
 
 
+def gauss_solv(AA,BB,tv):
+	if AA.det() == gf(0):
+		return None
+	rv = AA.inverse() * BB
+	rslt = vector(list(tv) + list(rv))
+	return rv
+
+def reverse_cmap(cmap,v,olist,vect):
+	o1,o2 = olist[0],olist[1]
+	while True:
+		tv1 = vector([gf.random_element() for _ in range(v)])
+		AA,BB = cmap2linear(cmap[:o1],vect[:o1],tv1)
+		ans1 = gauss_solv(AA,BB,tv1)
+		if ans1 is None:
+			continue
+		AA,BB = cmap2linear(cmap,vect,ans1)
+		ans2 = gauss_solv(AA,BB,ans1)
+		if ans1 is None:
+			continue
+		return ans1
+
+def rainbow_sign(hash,sk, v, olist):
+	F, invt,ct, invs, cs = sk
+	tmp = invs * (hash - cs)
+	tmp = reverse_cmap(F,v,olist,tmp)
+	sign = invt * (tmp - ct)
+	return sign
+
+def verify(pk,sign,h):
+	calc = polys_eval(pk,sign)
+	return calc==h
 
 
-
+if __name__ == "__main__":
+	v = 32
+	olist = [32,32]
+	pk, sk = keygen(v,olist)
+	h = [gf.random_element() for _ in range(sum(olist))]
+	s = rainbow_sign(h,sk,v,olist)
+	r = verify(pk,s)
+	print(r)
